@@ -1,0 +1,12 @@
+Please see http://log4go.googlecode.com/
+
+Installation:
+- Run `go get code.google.com/p/log4go`
+
+Usage:
+- Add the following import:
+import l4g "code.google.com/p/log4go"
+
+Acknowledgements:
+- pomack
+  For providing awesome patches to bring log4go up to the latest Go spec
