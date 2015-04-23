@@ -1,6 +1,6 @@
-./src/golang.org/
-./src/github.com/
+src/golang.org/
+src/github.com/
 pkg/linux_amd64/
-./bin/
+bin/
 .settings/
 .project
