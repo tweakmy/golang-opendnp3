@@ -1,154 +1,92 @@
+/*
+Copyright (C) 2014 Jo Ee Liew liewjoee@yahoo.com
+
+Licensed to the Apache Software Foundation (ASF) under one
+or more contributor license agreements.  See the NOTICE file
+distributed with this work for additional information
+regarding copyright ownership.  The ASF licenses this file
+to you under the Apache License, Version 2.0 (the
+"License"); you may not use this file except in compliance
+with the License.  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing,
+software distributed under the License is distributed on an
+"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+KIND, either express or implied.  See the License for the
+specific language governing permissions and limitations
+under the License.
+*/
+
 package APL
 
 import (
+	"os"
+	"io"
+	"fmt"
 	//"fmt"
-	"time"
+	//"time"
+	"log"
 )
-import h "opendnp3/helper"
+//import "golang.org/log" //Modified version of golang/log package
 
-//Create a Logger object
-type Logger struct {
-	Name string   	//Specifify the topic of the Logger
-	h.Observable 	//Inherit Observable from helper group
-}
+/*
+Using the default log package to do the logging
+*/
 
-type LogSubcriber struct{
-	Name string  	//Name of the subriber which can be Kafka, fmt, logfiles 
-	h.Observer		
-}
+var (
+	Logger *DNP3Logger //This is the logger which will be used all over the opendnp3 package
+	infoLogger *log.Logger	//This is the Logger defined in the go package log
+	errorLogger *log.Logger
+)
 
-//This the custom Publish that calls the Log function
-func (l *Logger) Log(v LogEntry){
-	//l.Value = v
-	l.Publish(v)
-}
-
-//Add a log subcriber
-func (l *Logger) AddLogSubscriber(logSubscriber LogSubcriber) {
-   l.AddObserver(logSubscriber)
-}
-
-//Delete a subcriber
-func (l *Logger) RemoveLogSubscriber(nameOfSubscriber string) {
-   
-}
-
-/******************************************************************/
 type FilterLevel uint
 
 const(
-	LEV_EVENT FilterLevel =	0x01
-	LEV_ERROR =		0x02
-	LEV_WARNING =	0x04
-	LEV_INFO  =		0x08
+	LEV_INFO FilterLevel =	0x01
+	LEV_WARNING =		0x02
+	LEV_ERROR =	0x04
+	LEV_FATAL =	0x08
 	LEV_INTERPRET =	0x10
-	LEV_COMM =		0x20
+	LEV_RAW =	0x20
 	LEV_DEBUG =		0x40
 )
 
-type LogEntry struct{
-	Time time.Time
-	Message string
-	DeviceName string
-	Location string
-	MFilterLevel FilterLevel
-	ErrorCode int
+type DNP3Logger struct{
+
 }
 
-/********************************************************************/
-type LogStdio struct{
-	LogSubcriber //Inherit LogSubriber
-} 
-//type Field struct {
-//	Value int64
-//	Observable
-//}
+//Initialize the logger to start logging
+func (l *DNP3Logger) Init(){
+	l.InitDefault(os.Stdout,os.Stderr)
+}
 
-//func (f *Field) Set(v int64){
-//	f.Value = v
-//	f.Publish(v)
-//}
-//
-//
-//func Listen(value interface{}){
-//	fmt.Printf("new value 1: %v\n", value)
-//}
+//Define logging medium
+func (l *DNP3Logger) InitDefault(iowriter io.Writer,errwriter io.Writer){
+	infoLogger = log.New(iowriter,"",log.Ldate|log.Ltime|log.Lshortfile)
+	errorLogger = log.New(errwriter,"",log.Ldate|log.Ltime|log.Lshortfile)
+}
 
-//func Listen2(value interface{}){
-//	fmt.Printf("new value 2: %v\n", value)
-//}
+//Logged function and filtering
+func (l *DNP3Logger) Logged(filterlevel FilterLevel, messageLog string){
+	/*
+	Setupt the filtering
+	*/
+	switch filterlevel {
+		case LEV_INFO:
+			infoLogger.Output(3,"INFO: " + messageLog)
+		case LEV_RAW:
+				infoLogger.Output(3,"RAW: " + messageLog)
+		case LEV_ERROR:
+			errorLogger.Output(3,"ERROR: " + messageLog)
+		case LEV_FATAL:
+			errorLogger.Output(3,"FATAL: " + messageLog)
+		//Case error and error handling
+	}
+}
 
-//func main() {
-//	v := &Field{}
-//	v.AddObserver(ObserverFunc(Listen))
-//	v.AddObserver(ObserverFunc(Listen2))
-//	v.Set(105)
-//	
-//	fmt.Println("Hello, playground")
-//}
-
-
-//class EventLog : public ILogBase, private Uncopyable
-//{
-//public:
-//
-//	/** Immediate printing to minimize effect of debugging output on execution timing. */
-//	//EventLog();
-//	virtual ~EventLog();
-//
-//	Logger* GetLogger( FilterLevel aFilter, const std::string& aLoggerID );
-//	Logger* GetExistingLogger( const std::string& aLoggerID );
-//	void GetAllLoggers( std::vector<Logger*>& apLoggers);
-//
-//	/**
-//	* Binds a listener to ALL log messages
-//	*/
-//	void AddLogSubscriber(ILogBase* apSubscriber);
-//
-//	/**
-//	* Binds a listener to only certain error messages
-//	*/
-//	void AddLogSubscriber(ILogBase* apSubscriber, int aErrorCode);
-//
-//	/**
-//	* Cancels a previous binding
-//	*/
-//	void RemoveLogSubscriber(ILogBase* apBase);
-//
-//	//implement the log function from ILogBase
-//	void Log( const LogEntry& arEntry );
-//	void SetVar(const std::string& aSource, const std::string& aVarName, int aValue);
-//
-//private:
-//
-//	bool SetContains(const std::set<int>& arSet, int aValue);
-//
-//	SigLock mLock;
-//
-//	//holds pointers to the loggers that have been distributed
-//	typedef std::map<std::string, Logger*> LoggerMap;
-//	LoggerMap mLogMap;
-//	typedef std::map<ILogBase*, std::set<int> > SubscriberMap;
-//	SubscriberMap mSubscribers;
-//
-//};
-
-//	LogEntry(): mTime(TimeStamp::GetUTCTimeStamp()) {};
-//
-//	LogEntry( FilterLevel aLevel, const std::string& aDeviceName, const std::string& aLocation, const std::string& aMessage, int aErrorCode);
-//
-//	const std::string&	GetDeviceName() const {
-//		return mDeviceName;
-//	}
-//	const std::string&	GetLocation() const {
-//		return mLocation;
-//	}
-//	const std::string&	GetMessage() const {
-//		return mMessage;
-//	}
-//	FilterLevel			GetFilterLevel() const {
-//		return mFilterLevel;
-//	}
-//	std::string			GetTimeString() const {
-//                return TimeStamp::UTCTimeStampToString(mTime);
-//	}
+//Logged f function
+func (l *DNP3Logger) Loggedf(filterlevel FilterLevel, messageLog string, v ...interface{}){
+			l.Logged(filterlevel, fmt.Sprintf( messageLog, v...))
+}

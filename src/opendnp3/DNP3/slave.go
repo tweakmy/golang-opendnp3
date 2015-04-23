@@ -1,3 +1,24 @@
+/*
+Copyright (C) 2014 Jo Ee Liew liewjoee@yahoo.com
+
+Licensed to the Apache Software Foundation (ASF) under one
+or more contributor license agreements.  See the NOTICE file
+distributed with this work for additional information
+regarding copyright ownership.  The ASF licenses this file
+to you under the Apache License, Version 2.0 (the
+"License"); you may not use this file except in compliance
+with the License.  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing,
+software distributed under the License is distributed on an
+"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+KIND, either express or implied.  See the License for the
+specific language governing permissions and limitations
+under the License.
+*/
+
 package DNP3
 
 import (
@@ -18,19 +39,20 @@ type IntfCommCh interface {
 type Slave struct{
 	Name  string   		//Name of the Slave as it might be possible to have multiple slave
 	CommCh IntfCommCh	//Interface comm channel
-	Config SlaveConfig	//Decoupled from the user config, as user might want to change on the fly 
-	Dl Datalink 
+	Config SlaveConfig	//Decoupled from the user config, as user might want to change on the fly
+	Dl Datalink
 }
 
 //Trying to stay away from state programming and use channel
 func (s *Slave) Start() {
 	//s.CommCh.DoClose()
 	s.CommCh.DoOpen() //Attemp to open the channel
-	
+
 	//Initaiting data link
 	var RecvBuffer []byte
 	s.CommCh.DoAsyncRead(&RecvBuffer)
 	s.Decode(RecvBuffer)
+	s.CommCh.DoClose()
 }
 
 //Decode incoming message and provide response
@@ -40,9 +62,9 @@ func (s *Slave) Decode( recvBuffer []byte) {
 	dlLayerChan := make(chan []byte) //Create Datalink Response Channel
 
 	//Wrong frame size
-	if bufferSize < 10 {	
+	if bufferSize < 10 {
 		//Informed the received buffer is wrong size
-		println("Incorrect frame size: %d",bufferSize )
+		apl.Logger.Loggedf(apl.LEV_ERROR,"Incorrect frame size: %d", string(bufferSize) )
 		return
 	}
 
@@ -58,42 +80,42 @@ func (s *Slave) Decode( recvBuffer []byte) {
 
 //	tpLayerChan := make(chan []byte) //Create Tranport Layer Response Channel
 //	appLayerChan := make(chan []byte) //Create Tranport Layer Response Channel
-	
+
 	if bufferSize >= 11 {
 //		tpLayerBuffer := make([]byte,0,10)
 //		tpLayerBuffer = append( tpLayerBuffer , recvBuffer[10:11]... ) //Copy only 10 byte
 //		go s.DecodeTranportLayer( &datalinkBuffer , dlChan)
 	}
-	
-	//Decode and provide response for the Datalink	
+
+	//Decode and provide response for the Datalink
 	if bufferSize >= 10 {
-		//Create a extract 10 byte message	
+		//Create a extract 10 byte message
 		//go s.Dl.Decode(datalinkBuffer , dlLayerChan)
 		s.Dl.Decode(datalinkBuffer , dlLayerChan)
 		datalinkResp := <- dlLayerChan
-		fmt.Println(datalinkResp) 	 
-	}	
+		fmt.Println(datalinkResp)
+	}
 }
 
 //Slave might attach more then one channel
 //Like SEL RTU
 //!!Future::Will create each eventbuffer for each Channel
-func (s *Slave) AttachTCP(tcpserver *apl.TcpServer){	
-	s.CommCh = tcpserver	
+func (s *Slave) AttachTCP(tcpserver *apl.TcpServer){
+	s.CommCh = tcpserver
 }
 
 //Slave might attach more then one channel
 //Like SEL RTU
 func (s *Slave) AttachSerial(serial *apl.Serial){
-		
+
 }
 
 //In case, no value was defined by user, then load the default value
 //The userconfig will be pass in to the slave instead of writing the configuration on the fly
 //This will user to preset a few value before starting the slave
 func (s *Slave) Configure(userLinkConfig *LinkConfig) {
-		
-	s.Dl = Datalink{ IsMaster:false, 
+
+	s.Dl = Datalink{ IsMaster:false,
 				LinkConfig:LinkConfig{
 					UseConfirms:false,
 					NumRetry:1,
