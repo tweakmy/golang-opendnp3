@@ -23,7 +23,12 @@ package DNP3
 
 import (
 	crc "github.com/howeyc/crc16"
+	//"fmt"
 )
 
 var DNPTABLE = crc.MakeTable(0xA6BC)
+
+func ValidateCRC(buffer []byte) uint16{
+	return crc.Checksum(buffer,DNPTABLE)
+}
 

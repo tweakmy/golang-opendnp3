@@ -23,16 +23,15 @@ package DNP3
 
 import (
 	"fmt"
+	"bytes"
 )
 import apl "opendnp3/APL"
-
-//const DNP3Header = [2]byte{0x5,0x64}
 
 type IntfCommCh interface {
 	DoClose()
 	DoOpen()
 	DoAsyncWrite([]byte)
-	DoAsyncRead(*[]byte) //Return the buffer size
+	DoAsyncRead() *bytes.Buffer//Return the buffer size
 	//Should duck-type to network or serial
 }
 
@@ -41,6 +40,8 @@ type Slave struct{
 	CommCh IntfCommCh	//Interface comm channel
 	Config SlaveConfig	//Decoupled from the user config, as user might want to change on the fly
 	Dl Datalink
+	Tp Transport
+	Ap Application
 }
 
 //Trying to stay away from state programming and use channel
@@ -48,53 +49,40 @@ func (s *Slave) Start() {
 	//s.CommCh.DoClose()
 	s.CommCh.DoOpen() //Attemp to open the channel
 
-	//Initaiting data link
-	var RecvBuffer []byte
-	s.CommCh.DoAsyncRead(&RecvBuffer)
-	s.Decode(RecvBuffer)
+	var recvMesg RecvMessage  //Create decoded message container
+	
+	//Create a byte buffer pointer
+	pRecvBuffer := s.CommCh.DoAsyncRead()
+	
+	fmt.Println("dummy")
+	s.Decode(pRecvBuffer, &recvMesg)
 	s.CommCh.DoClose()
 }
 
 //Decode incoming message and provide response
-func (s *Slave) Decode( recvBuffer []byte) {
-
-	bufferSize := len(recvBuffer)
-	dlLayerChan := make(chan []byte) //Create Datalink Response Channel
-
-	//Wrong frame size
-	if bufferSize < 10 {
-		//Informed the received buffer is wrong size
-		apl.Logger.Loggedf(apl.LEV_ERROR,"Incorrect frame size: %d", string(bufferSize) )
-		return
+func (s *Slave) Decode( pRecvBuffer *bytes.Buffer, pRecvMesg *RecvMessage) {
+	
+	//Decode Datalink
+	if pRecvBuffer.Len() > 9 {
+		err := s.Dl.Decode(pRecvBuffer,pRecvMesg)
+		if err != nil{
+		
+		}
 	}
-
-	datalinkBuffer := make([]byte,0,10)
-	datalinkBuffer = append( datalinkBuffer , recvBuffer[:10]... ) //Copy only 10 byte
-
-	//Make case to ignore the message or not
-	err := s.Dl.DecodeHeader(datalinkBuffer)
-	if err != nil {
-		println(err.Error())
-		return
+	
+	//Decode Transport layer
+	if pRecvBuffer.Len() > 10 {
+		err := s.Tp.Decode(pRecvBuffer,pRecvMesg)
+		if err != nil{
+			
+		}
+		
 	}
-
-//	tpLayerChan := make(chan []byte) //Create Tranport Layer Response Channel
-//	appLayerChan := make(chan []byte) //Create Tranport Layer Response Channel
-
-	if bufferSize >= 11 {
-//		tpLayerBuffer := make([]byte,0,10)
-//		tpLayerBuffer = append( tpLayerBuffer , recvBuffer[10:11]... ) //Copy only 10 byte
-//		go s.DecodeTranportLayer( &datalinkBuffer , dlChan)
-	}
-
-	//Decode and provide response for the Datalink
-	if bufferSize >= 10 {
-		//Create a extract 10 byte message
-		//go s.Dl.Decode(datalinkBuffer , dlLayerChan)
-		s.Dl.Decode(datalinkBuffer , dlLayerChan)
-		datalinkResp := <- dlLayerChan
-		fmt.Println(datalinkResp)
-	}
+	
+	if pRecvBuffer.Len() > 11 {
+		s.Ap.Decode(pRecvBuffer, pRecvMesg, pRecvMesg.IsMaster, pRecvMesg.isInitalBytesACPI)
+	}	
+	
 }
 
 //Slave might attach more then one channel

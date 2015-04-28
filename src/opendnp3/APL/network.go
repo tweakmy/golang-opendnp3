@@ -25,6 +25,7 @@ import (
 	"net"
 	"strconv"
 	"fmt"
+	"bytes"
 	//"log"
 	//"time"
 )
@@ -59,7 +60,7 @@ func (t *TcpClient) DoOpen(){
 
 	conn, err := net.DialTCP("tcp", nil, t.TCPAddr)
 	if err != nil {
-		Logger.Logged(LEV_ERROR,"Dial failed:" + err.Error())
+		Logger.Logged(2,LEV_ERROR,"Dial failed:" + err.Error())
 		//println("Dial failed:", err.Error())
 	}else
 	{
@@ -71,35 +72,29 @@ func (t *TcpServer) DoOpen(){
 
 	t.ResolveTCP() //Run TCP Resolve, if error it will quit the app
 
-  ln, err := net.ListenTCP("tcp", t.TCPAddr)
+  	ln, err := net.ListenTCP("tcp", t.TCPAddr)
 	if err != nil {
-		//** To be implemented panic(err)
-		Logger.Logged(LEV_ERROR,"Could not open port:" + err.Error())
+		Logger.Logged(2,LEV_FATAL,"Could not open port:" + err.Error())
 	}else{
-		Logger.Logged(LEV_INFO,"Listening to " + t.Address +":" + strconv.Itoa(int(t.Port)))
+		Logger.Logged(2,LEV_INFO,"Listening to " + t.Address +":" + strconv.Itoa(int(t.Port)))
 	}
 
-  //Waiting for client to connect
-  conn, err := ln.AcceptTCP()
-  if err != nil {
-		Logger.Logged(LEV_ERROR,"Could not accept TCP:" + err.Error())
-  }else{
-		Logger.Logged(LEV_INFO,"Connected Client at " + t.Address +":" + strconv.Itoa(int(t.Port)))
-    t.TCPConn = conn
-     	//defer t.DoOpen()
-  }
+  	//Waiting for client to connect
+  	conn, err := ln.AcceptTCP()
+  	if err != nil {
+		Logger.Logged(2,LEV_ERROR,"Could not accept TCP:" + err.Error())
+  	}else{
+		Logger.Logged(2,LEV_INFO,"Connected Client at " + t.Address +":" + strconv.Itoa(int(t.Port)))
+    	t.TCPConn = conn
+  	}
 }
 
 //Common to both Server and Client
-
-
 func (t *TcpBase) ResolveTCP() {
-	//println(t.Port)
+	
 	addr, err := net.ResolveTCPAddr("tcp",t.Address + ":" + strconv.Itoa(int(t.Port)))
 	if err != nil {
-		//println("ResolveTCPAddr failed:", err.Error())
-		Logger.Logged(LEV_INFO,"ResolveTCPAddr failed:" + err.Error())
-		//os.Exit(1)
+		Logger.Logged(2,LEV_FATAL,"ResolveTCPAddr failed:" + err.Error())
 	}else
 	{
 		t.TCPAddr  = addr
@@ -109,38 +104,28 @@ func (t *TcpBase) ResolveTCP() {
 func (t *TcpBase) DoAsyncWrite(apBuffer []byte) {
 		_, err := t.TCPConn.Write(apBuffer)
 		if err != nil {
-			Logger.Logged(LEV_ERROR,"Write to server failed:" + err.Error())
-			//os.Exit(1)
+			Logger.Logged(2,LEV_FATAL,"Write to server failed:" + err.Error())
 		}
 }
 
-func (t *TcpBase) DoAsyncRead(apBuffer *[]byte) {
+func (t *TcpBase) DoAsyncRead() (pBuffer *bytes.Buffer) {
 
 		bufferLen , err := t.TCPConn.Read(t.Apbuffer)
 		if err != nil {
-			Logger.Logged(LEV_ERROR,"Read data failed:" + err.Error())
-			//os.Exit(1)
+			Logger.Logged(2,LEV_FATAL,"Read data failed:" + err.Error())
 			t.TCPConn.Close()
-		}//else{
-
-		*apBuffer = make([]byte, 0, bufferLen) //Change the size correctly
-		*apBuffer = append(*apBuffer,t.Apbuffer[:bufferLen]...)
-
-		//??? Need to output hexa decimal representation
-		raw_mesg := ""
-		for i := 0; i < bufferLen; i++ {
-        	raw_mesg += fmt.Sprintf("%x ", t.Apbuffer[i])
-    	}
+		}
+		
+		//Logged the raw in hex
 		t.PrintHexRaw(bufferLen)
-		//BufferSize = tempSize
-		//	println("make new buffer")
-		//	apBuffer := make([]byte,0, bufferSize)
-		//	apBuffer = append(apBuffer,tempBuffer[:bufferSize]...)
-		//}
+		
+		//Create a byte buffer
+		pBuffer = bytes.NewBuffer(t.Apbuffer[:bufferLen])
+		return 
 }
 
 func (t *TcpBase) DoClose() {
-		Logger.Logged(LEV_INFO,"TCP Connection Close")
+		Logger.Logged(2,LEV_INFO,"TCP Connection Close")
 		t.TCPConn.Close()
 
 }
@@ -150,5 +135,5 @@ func (t *TcpBase) PrintHexRaw(bufferLen int) {
 		for i := 0; i < bufferLen; i++ {
         	raw_mesg += fmt.Sprintf("%02x ", t.Apbuffer[i])
     	}
-		Logger.Logged(LEV_RAW,raw_mesg)
+		Logger.Logged(2,LEV_RAW,raw_mesg)
 }

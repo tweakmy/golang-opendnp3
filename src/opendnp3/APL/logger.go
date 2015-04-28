@@ -64,29 +64,35 @@ func (l *DNP3Logger) Init(){
 
 //Define logging medium
 func (l *DNP3Logger) InitDefault(iowriter io.Writer,errwriter io.Writer){
+	//!!!??? Todo: implement fatal logger
 	infoLogger = log.New(iowriter,"",log.Ldate|log.Ltime|log.Lshortfile)
 	errorLogger = log.New(errwriter,"",log.Ldate|log.Ltime|log.Lshortfile)
 }
 
 //Logged function and filtering
-func (l *DNP3Logger) Logged(filterlevel FilterLevel, messageLog string){
+//callLevel refers whether the Logger.logged function was call within the same package or not
+//If call function was from the same package then use 2, else use 3
+func (l *DNP3Logger) Logged(calldepth int, filterlevel FilterLevel, messageLog string){
 	/*
-	Setupt the filtering
+	!!!??? Todo: Setup the filtering
 	*/
+	
 	switch filterlevel {
 		case LEV_INFO:
-			infoLogger.Output(3,"INFO: " + messageLog)
+			infoLogger.Output(calldepth,"INFO: " + messageLog)
+		case LEV_INTERPRET:
+			infoLogger.Output(calldepth,"INTERPRET: " + messageLog)	
 		case LEV_RAW:
-				infoLogger.Output(3,"RAW: " + messageLog)
+			infoLogger.Output(calldepth,"RAW: " + messageLog)
 		case LEV_ERROR:
-			errorLogger.Output(3,"ERROR: " + messageLog)
+			errorLogger.Output(calldepth,"ERROR: " + messageLog)
 		case LEV_FATAL:
-			errorLogger.Output(3,"FATAL: " + messageLog)
-		//Case error and error handling
+			errorLogger.Output(calldepth,"FATAL: " + messageLog)
+			os.Exit(1) //Exit if it is fatal
 	}
 }
 
 //Logged f function
-func (l *DNP3Logger) Loggedf(filterlevel FilterLevel, messageLog string, v ...interface{}){
-			l.Logged(filterlevel, fmt.Sprintf( messageLog, v...))
+func (l *DNP3Logger) Loggedf(calldepth int, filterlevel FilterLevel, messageLog string, v ...interface{}){
+			l.Logged(calldepth, filterlevel, fmt.Sprintf( messageLog, v...))
 }

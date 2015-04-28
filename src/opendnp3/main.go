@@ -43,7 +43,7 @@ func main() {
 
 
 	Ch.Name = "localhost"
-	Ch.Address = "192.168.1.5"
+	Ch.Address = "10.10.10.65"
 	Ch.Port  = 20000
 	Ch.Apbuffer = make([]byte,292)
 	//Ch. = dnp3.MaxFrameSize
