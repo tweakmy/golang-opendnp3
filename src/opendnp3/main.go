@@ -40,10 +40,9 @@ func main() {
 	apl.Logger.Init()
 
 	Ch := new(apl.TcpServer)
-
-
 	Ch.Name = "localhost"
-	Ch.Address = "10.10.10.65"
+	//Ch.Address = "10.10.10.78"
+	Ch.Address = "192.168.1.6"
 	Ch.Port  = 20000
 	Ch.Apbuffer = make([]byte,292)
 	//Ch. = dnp3.MaxFrameSize

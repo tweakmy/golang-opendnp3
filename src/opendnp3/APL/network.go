@@ -25,7 +25,8 @@ import (
 	"net"
 	"strconv"
 	"fmt"
-	"bytes"
+	h "opendnp3/helper"
+	//"bytes"
 	//"log"
 	//"time"
 )
@@ -108,7 +109,7 @@ func (t *TcpBase) DoAsyncWrite(apBuffer []byte) {
 		}
 }
 
-func (t *TcpBase) DoAsyncRead() (pBuffer *bytes.Buffer) {
+func (t *TcpBase) DoAsyncRead() (pBuffer *h.Buffer) {
 
 		bufferLen , err := t.TCPConn.Read(t.Apbuffer)
 		if err != nil {
@@ -120,7 +121,7 @@ func (t *TcpBase) DoAsyncRead() (pBuffer *bytes.Buffer) {
 		t.PrintHexRaw(bufferLen)
 		
 		//Create a byte buffer
-		pBuffer = bytes.NewBuffer(t.Apbuffer[:bufferLen])
+		pBuffer = h.NewBuffer(t.Apbuffer[:bufferLen])
 		return 
 }
 

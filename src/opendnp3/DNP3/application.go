@@ -22,10 +22,11 @@ under the License.
 package DNP3
 
 import (
-	apl "opendnp3/APL"
-	"bytes"
 	"encoding/binary"
-	//"fmt"
+	"fmt"
+	//"bytes"
+	apl "opendnp3/APL"
+	h "opendnp3/helper"
 )
 
 //Function Code in the application layer
@@ -103,64 +104,106 @@ const(
 	Reserved0_01 = 0x0002
 	Reserved1_00 = 0x0001
 )
-type Application struct {}
+type Application struct {
+	Uns Unsolicited
+}
 
 //Decode the application part of the message
-func (a Application) Decode(pBuffer *bytes.Buffer, pRecvMesg *RecvMessage, isMaster bool, isInitalByteACPI bool){
+func (a Application) Decode(pBuffer *h.Buffer, pRecvMesg *h.RecvMessage, isMaster bool, isInitalByteACPI bool){ 
+	
+	numReadByte := 1 //this is due to the tranport layer byte
 		
-	//Capture the Application Control Field and App Func Code
+	//If this is not the multi-frame or this is the first of the multi-frame
 	if isInitalByteACPI {
 		
+		//Capture the inital 2 byte
 		ACF_FC := pBuffer.Next(2)
+		numReadByte += 2 //Proceed the 2 more bytes
 		
 		//Read the Application Control Field
 		a.DecodeACF(ACF_FC[0], pRecvMesg)
 		
-		//Read in the Application Function Code
-		pRecvMesg.appFuncCode = ACF_FC[1]
-		a.PrintFuncCode(pRecvMesg.appFuncCode, isMaster) //Print application function Code	
+		//Read in the Application Function Code if thisi is a response message
+		pRecvMesg.AppFuncCode = ACF_FC[1]
+		a.PrintFuncCode(pRecvMesg.AppFuncCode, isMaster) //Print application function Code	
 		
 		//If this is a response message then the next 2 byte is IIN
 		if !isMaster{
 			iin_bytes := pBuffer.Next(2)
+			numReadByte += 2 //Proceed the 2 more bytes
 			a.DecodeIIN(uint(binary.LittleEndian.Uint16(iin_bytes)),pRecvMesg)
 		}
+		
+		//Initialize the Message UserData bytes with empty bytes; otherwise it will put the application on panic with nil pointer
+		pRecvMesg.PUserDataBuffer = h.NewBuffer([]byte(""))
+		
 	} 
-
+	
+	//Join all the user data together without the CRC
+	//Read the Remainder of buffer read + the number of Readbyte is less than 18
+	//every 16 bytes of user data is padded with 2 byte CRC
+	var userDataLength int
+	for {
+		bufLen := pBuffer.Len()
+		//If there is data still to be read
+		if numReadByte + bufLen > 0 {
+			if numReadByte + bufLen < 18 {
+				userDataLength = bufLen-2
+			}else{
+				userDataLength = 16
+			}
+			
+			_, err := pRecvMesg.PUserDataBuffer.Write(pBuffer.Next(userDataLength))
+			if err != nil{
+					//!!?? Error handling
+			}
+			
+			//Check CRC
+			crc := pBuffer.Next(2)
+			pRecvMesg.ChanCrcByte <- crc
+			fmt.Println("stuck here")
+			if !<-pRecvMesg.ChanIsCorrectCRC {
+				pRecvMesg.CrcError = true
+				PrintErrorCRC(crc)
+			}		
+		}
+		
+		numReadByte = 0
+	} 
 }
 
 //Decode Application Control Field
-func (a Application) DecodeACF(acf byte, pRecvMesg *RecvMessage){
+func (a Application) DecodeACF(acf byte, pRecvMesg *h.RecvMessage){
 	
 	//Check if this is the first and final frame
 	var fir, fin uint
 	 
-	pRecvMesg.appFinFir = acf & 0xC0
-	if pRecvMesg.appFinFir == FirstOfMulti_01 {
+	pRecvMesg.AppFinFir = acf & 0xC0
+	if pRecvMesg.AppFinFir == FirstOfMulti_01 {
 		fir = 0
 		fin = 1
-	}else if pRecvMesg.appFinFir == NotFirstNotLast_00 {
+	}else if pRecvMesg.AppFinFir == NotFirstNotLast_00 {
 		fir = 0
 		fin = 0	
-	}else if pRecvMesg.appFinFir == FinalFrame_10 {
+	}else if pRecvMesg.AppFinFir == FinalFrame_10 {
 		fir = 1 
 		fin = 0
-	}else if pRecvMesg.appFinFir == OneFrame_11 {
+	}else if pRecvMesg.AppFinFir == OneFrame_11 {
 		fir = 1 
 		fin = 1	
 	}
 	
 	//Check CON, UNS and SEQ number
-	pRecvMesg.appCon = acf & 0x20 >> 5 == 1  	//Application confirm
-	pRecvMesg.appUns = acf & 0x10 >> 4 == 1  	//Application unsolicited
-	pRecvMesg.appSeq = uint(acf & 0x0F)  		//Application sequence
+	pRecvMesg.AppCon = acf & 0x20 >> 5 == 1  	//Application confirm
+	pRecvMesg.AppUns = acf & 0x10 >> 4 == 1  	//Application unsolicited
+	pRecvMesg.AppSeq = uint(acf & 0x0F)  		//Application sequence
 	apl.Logger.Loggedf(3,apl.LEV_INTERPRET,"%02x Application Fir: %d, Fin: %d, Con: %t, Uns: %t, Seq: %d",
-		acf,fir,fin, pRecvMesg.appCon, pRecvMesg.appCon, pRecvMesg.appSeq )
+		acf,fir,fin, pRecvMesg.AppCon, pRecvMesg.AppCon, pRecvMesg.AppSeq )
 
 }
 
 //Decode Application Internal Indication Field
-func (a Application) DecodeIIN(iin uint, pRecvMesg *RecvMessage){
+func (a Application) DecodeIIN(iin uint, pRecvMesg *h.RecvMessage){
 	//From First Byte		
 	pRecvMesg.AllStationsMsgReceived = (iin & AllStationsMsgReceived_15 >> 15  == 1) 
 	pRecvMesg.Class01Avail 			 = (iin & Class01Avail_14 >> 14  == 1)
@@ -181,6 +224,15 @@ func (a Application) DecodeIIN(iin uint, pRecvMesg *RecvMessage){
 	pRecvMesg.Reserved0 			 = (iin & Reserved0_01 >> 1 == 1)
 	pRecvMesg.Reserved1				 = (iin & Reserved1_00 == 1)
 
+}
+
+//Process the User Data
+func (a Application) ProcessUserData(pSlave *Slave, pRecvMesg *h.RecvMessage){
+	switch pRecvMesg.AppFuncCode {
+		//Process the Request Disable Unsolicited
+		case ReqDisableUnsolicited_15:
+			a.Uns.DisableUnsolicited(pSlave, pRecvMesg)
+	}
 }
 
 //Print Application Function Code

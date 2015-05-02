@@ -25,10 +25,12 @@ import (
 	//"binary"
 	"fmt"
 	"errors"
-	"bytes"
+	//"bytes"
+	
 	"encoding/binary"
 	//crc "github.com/howeyc/crc16"
 	apl "opendnp3/APL"
+	h "opendnp3/helper"
 )
 
 const MaxFrameSize = 292
@@ -62,77 +64,78 @@ type Datalink struct {
 
 //#start #start #length #control #dest #dest #src #src #crc #crc
 //Decode Data link which is 10 byte
-func (d Datalink) Decode (pbuffer *bytes.Buffer, pRecvMesg *RecvMessage )(err error) {
+func (d Datalink) Decode (pbuffer *h.Buffer, pRecvMesg *h.RecvMessage )(err error) {
 	fmt.Println("dummy")
 	//??Todo: to try unit test on less message
-	//??Todo: potential of program crashing because it might be less than 10 bytes
-	buffer := make([]byte,10)
-	
-	//??Todo: implement error catch on the buffer.read function
-	/*Read reads the next len(p) bytes from the buffer or until the buffer is drained. 
-	The return value n is the number of bytes read. 
-	If the buffer has no data to return, err is io.EOF (unless len(p) is zero); otherwise it is nil.
-	*/ 
-	pbuffer.Read(buffer) //Read it to the buffer
-	
-	//??Todo: to use bufferlen
-	//bufferLen := pbuffer.Len
-	
 	//initialize the error to nothing
 	err = nil
 	
 	//Decode start byte
-	if buffer[0] != 0x5 || buffer[1] != 0x64 {
-		apl.Logger.Loggedf(3,apl.LEV_ERROR,"Incorrect header: %02x %02x",buffer[0],buffer[1])
-		err = errors.New("Incorrect header")		
+	startHeader := pbuffer.Next(2)
+	if startHeader[0] != 0x5 || startHeader[1] != 0x64 {
+		apl.Logger.Loggedf(3,apl.LEV_ERROR,"Incorrect header: %02x %02x",startHeader[0],startHeader[1])
+		err = errors.New("Incorrect header")	
 	}
-	
-	pRecvMesg.length = uint(buffer[2])
-	apl.Logger.Loggedf(3,apl.LEV_INTERPRET,"Length: %d",pRecvMesg.length)
-	
+	//Decode the Length
+	length := pbuffer.Next(1)
+	pRecvMesg.Length = uint(length[0])
+	d.PrintLength(pRecvMesg.Length)
+
 	//Decode the control message
-	ControlByte := buffer[3]
+	d.DecodeControl(pbuffer, pRecvMesg)
 	
-	//Decode bit 7 of the control byte the direction bit
-	pRecvMesg.IsMaster = ControlByte & 0x80 >> 7 == 1
-	apl.Logger.Loggedf(3,apl.LEV_INTERPRET,"IsMaster: %t",pRecvMesg.IsMaster)
-		//Decode bit 6
-		if (ControlByte & 0x40) == 0x40 {
-			pRecvMesg.fcb = (ControlByte & 0x30) >> 5 == 1
-			apl.Logger.Loggedf(3,apl.LEV_INTERPRET,"FCB: %t", pRecvMesg.fcb)	
-			
-			pRecvMesg.fcv = (ControlByte & 0x30) >> 4 == 1
-			apl.Logger.Loggedf(3,apl.LEV_INTERPRET,"FCV: %t", pRecvMesg.fcv)
-		}else{
-			pRecvMesg.dfc = (ControlByte & 0x30) >> 4 == 1
-			apl.Logger.Loggedf(3,apl.LEV_INTERPRET,"DFC: %t", pRecvMesg.dfc)
-		}
-	
-	//Bit Masking Primary and Function Code 
-	pRecvMesg.functionCode = ControlByte & 0x4F
-	d.PrintControl(pRecvMesg.functionCode)
-	
-	
-	//Decode the Destination Address	
-	pRecvMesg.destAddr = uint(binary.LittleEndian.Uint16(buffer[4:6]))
-	apl.Logger.Loggedf(3,apl.LEV_INTERPRET,"%02x %02x DestAddr: %d",buffer[4],buffer[5],pRecvMesg.destAddr)
+	//Decode the Destination Address
+	destAddr := pbuffer.Next(2)	
+	pRecvMesg.DestAddr = uint(binary.LittleEndian.Uint16(destAddr))
+	d.PrintAddress(destAddr,"DestAddr",pRecvMesg.DestAddr)
 	
 	//Decode the Source Address
-	pRecvMesg.srcAddr = uint(binary.LittleEndian.Uint16(buffer[6:8]))
-	apl.Logger.Loggedf(3,apl.LEV_INTERPRET,"%02x %02x SrcAddr: %d", buffer[6],buffer[7],pRecvMesg.srcAddr)
+	srcAddr := pbuffer.Next(2)	
+	pRecvMesg.SrcAddr = uint(binary.LittleEndian.Uint16(srcAddr))
+	d.PrintAddress(srcAddr,"SourceAddr",pRecvMesg.SrcAddr)
 	
 	//Check CRC
-	crc := uint16(binary.LittleEndian.Uint16(buffer[8:10]))
-	if crc != ValidateCRC(buffer[0:8]){
-		apl.Logger.Loggedf(3,apl.LEV_ERROR,"Incorrect CRC: %02x, %02x ",buffer[8],buffer[9])
-		pRecvMesg.crcError = true
+	crc := pbuffer.Next(2)
+	pRecvMesg.ChanCrcByte <- crc
+	if !<-pRecvMesg.ChanIsCorrectCRC {
+		pRecvMesg.CrcError = true
+		PrintErrorCRC(crc)
 	}
 	
 	return 	  
 }
 
-//Decode datalink Control byte
-func (d Datalink) PrintControl (fc byte) {
+//Decode Control byte which is of single byte
+func (d Datalink) DecodeControl(pbuffer *h.Buffer,pRecvMesg *h.RecvMessage) {
+	ControlByte, err  := pbuffer.ReadByte()
+	if err !=nil{
+		apl.Logger.Logged(3,apl.LEV_ERROR,"Control Error" + err.Error())
+	}
+	//Decode bit 7 of the control byte the direction bit
+	pRecvMesg.IsMaster = ControlByte & 0x80 >> 7 == 1
+	
+	//Decode bit 6
+	if (ControlByte & 0x40) == 0x40 {
+			pRecvMesg.Fcb = (ControlByte & 0x30) >> 5 == 1
+			pRecvMesg.Fcv = (ControlByte & 0x30) >> 4 == 1
+	}else{
+			pRecvMesg.Dfc = (ControlByte & 0x30) >> 4 == 1
+	}
+	
+	//Decode bit 5-0 
+	pRecvMesg.FunctionCode = ControlByte & 0x4F
+	
+	//Output the Control byte to logger
+	d.PrintControl(ControlByte,pRecvMesg.IsMaster,pRecvMesg.Fcb,pRecvMesg.Fcv,pRecvMesg.Dfc,pRecvMesg.FunctionCode)	
+}
+
+//Print total length
+func (d Datalink) PrintLength(length uint){
+	apl.Logger.Loggedf(3,apl.LEV_INTERPRET,"Length: %d",length)
+}
+
+//Print datalink Function Code byte
+func (d Datalink) PrintControl (controlByte byte, isMaster bool, fcb bool, fcv bool, dfc bool, fc byte) {
 	var fcString string
 	switch {
 		case fc == P0_ResetLink :
@@ -161,8 +164,15 @@ func (d Datalink) PrintControl (fc byte) {
 			//var FC = string(PRI_FC_raw)
 			fcString ="Unknown Function Code"	
 	}
-	apl.Logger.Loggedf(3,apl.LEV_INTERPRET,"%02x FC: %s",fc,fcString)
+	apl.Logger.Loggedf(3,apl.LEV_INTERPRET,"%02x IsMaster: %t FCB: %t FCV: %t DFC: %t FCB: %s",
+		controlByte,isMaster,fcb,fcv,dfc,fcString)
 }
+
+//Print the Datalink Address
+func (d Datalink) PrintAddress(addressByte []byte, whichAddr string ,address uint){
+	apl.Logger.Loggedf(3,apl.LEV_INTERPRET,"%02x %02x %s: %d",addressByte[0],addressByte[1],whichAddr,address)
+}
+
 
 //
 ////Check FCB bit is properly toggled, else set dfc bit

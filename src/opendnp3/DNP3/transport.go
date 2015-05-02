@@ -22,9 +22,9 @@ under the License.
 package DNP3
 
 import (
+	//"bytes"
 	apl "opendnp3/APL"
-	"bytes"
-	//"encoding/binary"
+	h "opendnp3/helper"
 )
 
 const (
@@ -38,35 +38,36 @@ type Transport struct{}
 
 //Decode the tranport layer of the message
 //TPDU can only carry 249 user data
-func (t Transport) Decode (pbuffer *bytes.Buffer, pRecvMesg *RecvMessage) (err error) {
+func (t Transport) Decode (pbuffer *h.Buffer, pRecvMesg *h.RecvMessage) (err error) {
+		
+	buffer := pbuffer.Next(1)
 	
-	buffer := make([]byte,1)
-	//!!??Todo: implement error control after doing buffer read
-	pbuffer.Read(buffer)
 	err = nil 
 	var fir, fin uint
 	//First frame , final frame of transport layer
-	pRecvMesg.tpFinFir = buffer[0] & 0xC0 
-	if pRecvMesg.tpFinFir == FirstOfMulti_01 {
+	pRecvMesg.TpFinFir = buffer[0] & 0xC0 
+	if pRecvMesg.TpFinFir == FirstOfMulti_01 {
 		fir = 0
 		fin = 1
-		pRecvMesg.isInitalBytesACPI = false
-	}else if pRecvMesg.tpFinFir == NotFirstNotLast_00 {
+		pRecvMesg.IsInitalBytesACPI = false
+	}else if pRecvMesg.TpFinFir == NotFirstNotLast_00 {
 		fir = 0
 		fin = 0	
-		pRecvMesg.isInitalBytesACPI = false	
-	}else if pRecvMesg.tpFinFir == FinalFrame_10 {
+		pRecvMesg.IsInitalBytesACPI = false	
+	}else if pRecvMesg.TpFinFir == FinalFrame_10 {
 		fir = 1
 		fin = 0
-		pRecvMesg.isInitalBytesACPI = true	//This will trigger application layer to read the first 2 byte or 4 byte as ACPI
-	}else if pRecvMesg.tpFinFir == OneFrame_11 {
+		pRecvMesg.IsInitalBytesACPI = true	//This will trigger application layer to read the first 2 byte or 4 byte as ACPI
+	}else if pRecvMesg.TpFinFir == OneFrame_11 {
 		fir = 1
 		fin = 1
-		pRecvMesg.isInitalBytesACPI = true	//This will trigger application layer to read the first 2 byte or 4 byte as ACPI	
+		pRecvMesg.IsInitalBytesACPI = true	//This will trigger application layer to read the first 2 byte or 4 byte as ACPI	
+		//Initialize the Message UserData bytes
+		pRecvMesg.PUserDataBuffer = h.NewBuffer([]byte(""))
 	}
-	
+		
 	//Sequence Number for transport 0-63 allowed
-	pRecvMesg.srcAddr = uint(buffer[0] & 0x3F)
-	apl.Logger.Loggedf(3,apl.LEV_INTERPRET,"%02x Transport Fir: %d Fin: %d Transport Seq: %d",buffer,fir,fin,pRecvMesg.srcAddr)
+	pRecvMesg.TpSeq = uint(buffer[0] & 0x3F)
+	apl.Logger.Loggedf(3,apl.LEV_INTERPRET,"%02x Transport Fir: %d Fin: %d Transport Seq: %d",buffer,fir,fin,pRecvMesg.TpSeq)
 	return 
 }

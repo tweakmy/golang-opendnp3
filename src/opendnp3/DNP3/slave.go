@@ -22,16 +22,17 @@ under the License.
 package DNP3
 
 import (
-	"fmt"
-	"bytes"
+	//"fmt"
+	//"bytes"
+	apl "opendnp3/APL"
+	h "opendnp3/helper"
 )
-import apl "opendnp3/APL"
 
 type IntfCommCh interface {
 	DoClose()
 	DoOpen()
 	DoAsyncWrite([]byte)
-	DoAsyncRead() *bytes.Buffer//Return the buffer size
+	DoAsyncRead() *h.Buffer//Return the buffer size
 	//Should duck-type to network or serial
 }
 
@@ -46,21 +47,37 @@ type Slave struct{
 
 //Trying to stay away from state programming and use channel
 func (s *Slave) Start() {
+	//By default slave unsolicited should be turn off before comms initialization
+	s.Ap.Uns.Class1Enabled = false
+	s.Ap.Uns.Class2Enabled = false
+	s.Ap.Uns.Class3Enabled = false
 	//s.CommCh.DoClose()
 	s.CommCh.DoOpen() //Attemp to open the channel
 
-	var recvMesg RecvMessage  //Create decoded message container
+	var recvMesg h.RecvMessage  //Create decoded message container
 	
 	//Create a byte buffer pointer
 	pRecvBuffer := s.CommCh.DoAsyncRead()
 	
-	fmt.Println("dummy")
+	//Create a channel to pass in
+	recvMesg.ChanCrcByte = make(chan []byte)
+	recvMesg.ChanIsCorrectCRC = make(chan bool)
+	
+	//Start Processing the CRC
+	go ValidateCRCandLenfromDNP3(pRecvBuffer.Bytes(), &recvMesg)
+	
+	//Slave will decode the received Message
 	s.Decode(pRecvBuffer, &recvMesg)
+	
+	//Process the user data after merging
+	if recvMesg.PUserDataBuffer.Len() > 0 {
+		s.Ap.ProcessUserData(s,&recvMesg)
+	}
 	s.CommCh.DoClose()
 }
 
 //Decode incoming message and provide response
-func (s *Slave) Decode( pRecvBuffer *bytes.Buffer, pRecvMesg *RecvMessage) {
+func (s *Slave) Decode( pRecvBuffer *h.Buffer, pRecvMesg *h.RecvMessage) {
 	
 	//Decode Datalink
 	if pRecvBuffer.Len() > 9 {
@@ -69,7 +86,7 @@ func (s *Slave) Decode( pRecvBuffer *bytes.Buffer, pRecvMesg *RecvMessage) {
 		
 		}
 	}
-	
+		
 	//Decode Transport layer
 	if pRecvBuffer.Len() > 10 {
 		err := s.Tp.Decode(pRecvBuffer,pRecvMesg)
@@ -80,7 +97,7 @@ func (s *Slave) Decode( pRecvBuffer *bytes.Buffer, pRecvMesg *RecvMessage) {
 	}
 	
 	if pRecvBuffer.Len() > 11 {
-		s.Ap.Decode(pRecvBuffer, pRecvMesg, pRecvMesg.IsMaster, pRecvMesg.isInitalBytesACPI)
+		s.Ap.Decode(pRecvBuffer, pRecvMesg, pRecvMesg.IsMaster, pRecvMesg.IsInitalBytesACPI)
 	}	
 	
 }
